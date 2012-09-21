@@ -280,13 +280,13 @@ void ENC28J60::initSPI () {
 }
 
 static void enableChip () {
-    cli();
+    cli();		//Disable Interrupts 
     bitClear(PORTB, selectBit);
 }
 
 static void disableChip () {
     bitSet(PORTB, selectBit);
-    sei();
+    sei();		//Enable Interrupts
 }
 
 static void xferSPI (byte data) {
@@ -411,7 +411,7 @@ byte ENC28J60::initialize (word size, const byte* macaddr, byte csPin) {
     writeRegByte(MAADR0, macaddr[5]);
     writePhy(PHCON2, PHCON2_HDLDIS);
     SetBank(ECON1);
-    writeOp(ENC28J60_BIT_FIELD_SET, EIE, EIE_INTIE|EIE_PKTIE);
+    writeOp(ENC28J60_BIT_FIELD_SET, EIE, EIE_RXERIE|EIE_TXERIE|EIE_INTIE|EIE_PKTIE);   //AF 21/09/2012 set TXERIE and RXERIE flags to catch buffer overruns. 
     writeOp(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_RXEN);
 
     byte rev = readRegByte(EREVID);
@@ -442,6 +442,9 @@ void ENC28J60::packetSend(word len) {
 
 word ENC28J60::packetReceive() {
     word len = 0;
+    if (readRegByte(EIR) & EIR_RXERIF) {
+		Serial.println("Overflow");			// do something - clear buffer, reset DHCP state etc.
+	}
     if (readRegByte(EPKTCNT) > 0) {
         writeReg(ERDPT, gNextPacketPtr);
 
@@ -462,7 +465,7 @@ word ENC28J60::packetReceive() {
         else
             readBuf(len, buffer);
         buffer[len] = 0;
-        if (gNextPacketPtr - 1 > RXSTOP_INIT)
+        if (gNextPacketPtr - 1 > RXSTOP_INIT)		//RXSTOP_INIT is the end of the RX buffer 0x0BFF. The buffer is a few bytes more than 2 packets.
             writeReg(ERXRDPT, RXSTOP_INIT);
         else
             writeReg(ERXRDPT, gNextPacketPtr - 1);
